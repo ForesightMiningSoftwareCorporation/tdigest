@@ -160,7 +160,9 @@ impl TDigest {
                 count_so_far += cluster.count;
                 if count_so_far as f64 > upper_bound {
                     // Finish the current merge.
-                    merged_clusters.push(current_merge);
+                    if current_merge.count > 0 {
+                        merged_clusters.push(current_merge);
+                    }
                     // Start a new merge.
                     current_merge = Cluster::default();
                     k_limit += 1.0;
@@ -169,7 +171,9 @@ impl TDigest {
                 current_merge += cluster.clone();
             }
         }
-        merged_clusters.push(current_merge);
+        if current_merge.count > 0 {
+            merged_clusters.push(current_merge);
+        }
         merged_clusters.sort(); // Only necessary to fix float imprecision.
         merged_clusters
     }
@@ -247,6 +251,24 @@ impl TDigest {
         let value = center + ((rank - t as f64) / self.clusters[pos].count as f64 - 0.5) * delta;
         Some(value.clamp(min, max))
     }
+
+    /// Returns an estimate for the variance of all samples.
+    ///
+    /// The estimation assumes that a cluster's samples are centered at the
+    /// cluster mean, allowing us to calculate only one deviation for each
+    /// cluster.
+    pub fn estimate_variance(&self) -> Option<f64> {
+        let Some(mean) = self.mean() else { return None };
+        let mut variance = 0.0;
+        let mut n = 0.0;
+        for cluster in &self.clusters {
+            n += cluster.count as f64;
+            let centroid_sq_dev = (cluster.mean() - mean).powi(2);
+            let delta = (centroid_sq_dev - variance) / n;
+            variance += cluster.count as f64 * delta;
+        }
+        Some(variance)
+    }
 }
 
 /*
@@ -305,36 +327,30 @@ mod tests {
     fn test_merge_against_uniform_distribution() {
         let t = TDigest::default();
         let values: Vec<_> = (1..=1_000_000).map(f64::from).collect();
-
         let t = t.merge_sorted(100, &values);
 
         let ans = t.estimate_quantile(1.0).unwrap();
         let expected = 1_000_000.0;
-
         let percentage = (expected - ans).abs() / expected;
         assert!(percentage < ERR);
 
         let ans = t.estimate_quantile(0.99).unwrap();
         let expected = 990_000.0;
-
         let percentage = (expected - ans).abs() / expected;
         assert!(percentage < ERR);
 
         let ans = t.estimate_quantile(0.01).unwrap();
         let expected = 10_000.0;
-
         let percentage = (expected - ans).abs() / expected;
         assert!(percentage < ERR);
 
         let ans = t.estimate_quantile(0.0).unwrap();
         let expected = 1.0;
-
         let percentage = (expected - ans).abs() / expected;
         assert!(percentage < ERR);
 
         let ans = t.estimate_quantile(0.5).unwrap();
         let expected = 500_000.0;
-
         let percentage = (expected - ans).abs() / expected;
         assert!(percentage < ERR);
     }
@@ -409,5 +425,17 @@ mod tests {
 
         let percentage = (expected - ans).abs() / expected;
         assert!(percentage < ERR);
+    }
+
+    #[test]
+    fn estimate_variance_sanity() {
+        let t = TDigest::default();
+        let values: Vec<_> = (1..=10).map(f64::from).collect();
+        let t = t.merge_sorted(100, &values);
+
+        let ans = t.estimate_variance().unwrap();
+        let expected = 8.25;
+        let percentage = (expected - ans).abs() / expected;
+        assert!(percentage < ERR, "{ans}");
     }
 }
