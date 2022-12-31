@@ -1,0 +1,13 @@
+[package]
+name = "tdigest"
+repository = "https://github.com/ForesightMiningSoftwareCorporation/tdigest"
+version = "0.1.0"
+license = "Apache-2.0"
+description = "T-Digest algorithm in Rust"
+authors = ["Duncan Fairbanks <duncan.fairbanks@foresightmining.com>"]
+readme = "README.md"
+keywords = ["tdigest", "quantile", "statistics"]
+edition = "2021"
+
+[dependencies]
+float-ord = "0.3"
