@@ -96,10 +96,10 @@ impl TDigest {
                 .map(|val| Cluster::new(val, 1)),
         );
         clusters.sort();
-        let merged_clusters = Self::merge_clusters(max_clusters, total_count, &clusters);
+        Self::merge_clusters(max_clusters, total_count, &mut clusters);
 
         Self {
-            clusters: merged_clusters,
+            clusters,
             count: total_count,
             sum,
             min,
@@ -135,47 +135,48 @@ impl TDigest {
             min,
             max,
         };
-        merged.clusters = Self::merge_clusters(max_clusters, merged.count, &merged.clusters);
+        Self::merge_clusters(max_clusters, merged.count, &mut merged.clusters);
         merged
     }
 
     /// Merge adjacent clusters while keeping clusters smaller than the upper
     /// bound determined by the scaling function.
-    fn merge_clusters(
-        max_clusters: usize,
-        total_count: usize,
-        sorted_clusters: &[Cluster],
-    ) -> Vec<Cluster> {
+    fn merge_clusters(max_clusters: usize, total_count: usize, sorted_clusters: &mut Vec<Cluster>) {
         if total_count == 0 {
-            return Vec::new();
+            return;
         }
 
-        let mut merged_clusters: Vec<Cluster> = Vec::with_capacity(max_clusters);
+        // To avoid another allocation, do merging in-place.
+        // This requires two cursors.
+        let mut dst_i = 0;
+        let mut src_i = 0;
         let mut current_merge = Cluster::default();
-        {
-            let mut count_so_far = 0;
-            let mut k_limit = 1.0;
-            let mut upper_bound = k_to_q(k_limit, max_clusters as f64) * total_count as f64;
-            for cluster in sorted_clusters {
-                count_so_far += cluster.count;
-                if count_so_far as f64 > upper_bound {
-                    // Finish the current merge.
-                    if current_merge.count > 0 {
-                        merged_clusters.push(current_merge);
-                    }
-                    // Start a new merge.
-                    current_merge = Cluster::default();
-                    k_limit += 1.0;
-                    upper_bound = k_to_q(k_limit, max_clusters as f64) * total_count as f64;
+        let mut count_so_far = 0;
+        let mut k_limit = 1.0;
+        let mut upper_bound = k_to_q(k_limit, max_clusters as f64) * total_count as f64;
+        while src_i < sorted_clusters.len() {
+            let source_cluster = std::mem::take(&mut sorted_clusters[src_i]);
+            count_so_far += source_cluster.count;
+            if count_so_far as f64 > upper_bound {
+                // Finish the current merge.
+                if current_merge.count > 0 {
+                    sorted_clusters[dst_i] = current_merge;
+                    dst_i += 1;
                 }
-                current_merge += cluster.clone();
+                // Start a new merge.
+                current_merge = Cluster::default();
+                k_limit += 1.0;
+                upper_bound = k_to_q(k_limit, max_clusters as f64) * total_count as f64;
             }
+            current_merge += source_cluster;
+            src_i += 1;
         }
         if current_merge.count > 0 {
-            merged_clusters.push(current_merge);
+            sorted_clusters[dst_i] = current_merge;
+            dst_i += 1;
         }
-        merged_clusters.sort(); // Only necessary to fix float imprecision.
-        merged_clusters
+        sorted_clusters.truncate(dst_i);
+        sorted_clusters.sort_unstable(); // Only necessary to fix float imprecision.
     }
 
     /// Returns an estimate for
