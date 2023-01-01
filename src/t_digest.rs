@@ -29,6 +29,10 @@ impl Default for TDigest {
 }
 
 impl TDigest {
+    pub fn clusters(&self) -> &[Cluster] {
+        &self.clusters
+    }
+
     /// Total number of samples.
     #[inline]
     pub fn count(&self) -> usize {
