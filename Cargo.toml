@@ -8,6 +8,8 @@ authors = ["Duncan Fairbanks <duncan.fairbanks@foresightmining.com>"]
 readme = "README.md"
 keywords = ["tdigest", "quantile", "statistics"]
 edition = "2021"
+repository = "https://github.com/ForesightMiningSoftwareCorporation/dag_tables"
+publish = ["foresight-mining-software-corporation"]
 
 [dependencies]
 float-ord = "0.3"
